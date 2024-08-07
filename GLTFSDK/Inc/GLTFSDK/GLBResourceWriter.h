@@ -21,6 +21,7 @@ namespace Microsoft
             GLBResourceWriter(std::unique_ptr<IStreamWriterCache> streamCache, std::unique_ptr<std::iostream> tempBufferStream);
 
             void Flush(const std::string& manifest, const std::string& uri);
+            void FlushStream(const std::string& manifest, std::ostream* stream);
             std::string GenerateBufferUri(const std::string& bufferId) const override;
             std::ostream* GetBufferStream(const std::string& bufferId) override;
 

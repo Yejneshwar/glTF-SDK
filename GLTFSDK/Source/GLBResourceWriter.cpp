@@ -4,6 +4,7 @@
 #include <GLTFSDK/GLBResourceWriter.h>
 
 #include <sstream>
+#include <iostream>
 
 using namespace Microsoft::glTF;
 
@@ -60,6 +61,61 @@ void GLBResourceWriter::Flush(const std::string& manifest, const std::string& ur
         + binaryChunkLength;
 
     auto stream = m_streamWriterCache->Get(uri);
+
+    // Write GLB header (12 bytes)
+    StreamUtils::WriteBinary(*stream, GLB_HEADER_MAGIC_STRING, GLB_HEADER_MAGIC_STRING_SIZE);
+    StreamUtils::WriteBinary(*stream, GLB_HEADER_VERSION_2);
+    StreamUtils::WriteBinary(*stream, length);
+
+    // Write JSON header (8 bytes)
+    StreamUtils::WriteBinary(*stream, jsonChunkLength);
+    StreamUtils::WriteBinary(*stream, GLB_CHUNK_TYPE_JSON, GLB_CHUNK_TYPE_SIZE);
+
+    // Write JSON (indeterminate length)
+    StreamUtils::WriteBinary(*stream, manifest);
+
+    if (jsonPaddingLength > 0)
+    {
+        // GLB spec requires the JSON chunk to be padded with trailing space characters (0x20) to satisfy alignment requirements
+        StreamUtils::WriteBinary(*stream, std::string(jsonPaddingLength, ' '));
+    }
+
+    // Write BIN header (8 bytes)
+    StreamUtils::WriteBinary(*stream, binaryChunkLength);
+    StreamUtils::WriteBinary(*stream, GLB_CHUNK_TYPE_BIN, GLB_CHUNK_TYPE_SIZE);
+
+    // Write BIN contents (indeterminate length) - copy the temporary buffer's contents to the output stream
+    if (binaryChunkLength > 0)
+    {
+        *stream << m_stream->rdbuf();
+    }
+
+    if (binaryPaddingLength > 0)
+    {
+        // GLB spec requires the BIN chunk to be padded with trailing zeros (0x00) to satisfy alignment requirements
+        StreamUtils::WriteBinary(*stream, std::vector<uint8_t>(binaryPaddingLength, 0));
+    }
+}
+
+
+// Write to a stringstream instead of a file (can be useful for draco compression)
+void GLBResourceWriter::FlushStream(const std::string& manifest, std::ostream* stream)
+{
+    uint32_t jsonChunkLength = static_cast<uint32_t>(manifest.length());
+    const uint32_t jsonPaddingLength = ::CalculatePadding(jsonChunkLength);
+
+    jsonChunkLength += jsonPaddingLength;
+
+    uint32_t binaryChunkLength = static_cast<uint32_t>(GetBufferOffset(GLB_BUFFER_ID));
+    const uint32_t binaryPaddingLength = ::CalculatePadding(binaryChunkLength);
+
+    binaryChunkLength += binaryPaddingLength;
+
+    const uint32_t length = GLB_HEADER_BYTE_SIZE // 12 bytes (GLB header) + 8 bytes (JSON header)
+        + jsonChunkLength
+        + sizeof(binaryChunkLength) + GLB_CHUNK_TYPE_SIZE // 8 bytes (BIN header)
+        + binaryChunkLength;
+
 
     // Write GLB header (12 bytes)
     StreamUtils::WriteBinary(*stream, GLB_HEADER_MAGIC_STRING, GLB_HEADER_MAGIC_STRING_SIZE);
